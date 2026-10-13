@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="3">
+  <title>Traffic MQTT Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 1.5rem; background: #f5f7fa; color: #1f2937; }
+    main { max-width: 1200px; margin: 0 auto; }
+    h1, h2 { margin-bottom: .5rem; }
+    .muted { color: #64748b; }
+    .panel { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin: 1rem 0; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { padding: .65rem; border-bottom: 1px solid #e2e8f0; text-align: left; white-space: nowrap; }
+    th { background: #f8fafc; }
+    .chart-wrap { min-height: 280px; }
+    @media (max-width: 600px) { body { padding: .75rem; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Traffic MQTT Monitor</h1>
+  <p class="muted">Historical CSV replay over MQTT · Random Forest prediction · refreshes every 3 seconds</p>
+
+  <section class="panel">
+    <h2>Latest messages</h2>
+    {% if messages %}
+    <table>
+      <thead>
+        <tr><th>Date/time</th><th>Actual traffic</th><th>Predicted traffic</th><th>Weather</th></tr>
+      </thead>
+      <tbody>
+      {% for item in messages %}
+        <tr>
+          <td>{{ item.get('date_time', '—') }}</td>
+          <td>{{ item.get('traffic_volume', '—') }}</td>
+          <td>{{ item.get('predicted_traffic', '—') }}</td>
+          <td>{{ item.get('weather_type', '—') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p>No MQTT messages received yet. Start <code>sender.py</code> after the broker and receiver are running.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Actual vs predicted traffic volume</h2>
+    <p class="muted">The chart compares predictions with actual values carried in the same historical CSV rows.</p>
+    <div class="chart-wrap"><canvas id="trafficChart" aria-label="Actual and predicted traffic volume chart"></canvas></div>
+  </section>
+</main>
+
+<script>
+  const rows = {{ messages|reverse|list|tojson }};
+  const labels = rows.map(row => row.date_time ?? "");
+  const actual = rows.map(row => {
+    const value = Number(row.traffic_volume);
+    return Number.isFinite(value) ? value : null;
+  });
+  const predicted = rows.map(row => {
+    const value = Number(row.predicted_traffic);
+    return Number.isFinite(value) ? value : null;
+  });
+
+  const canvas = document.getElementById("trafficChart");
+  if (window.Chart && canvas) {
+    new Chart(canvas, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "Actual traffic", data: actual, borderWidth: 2, tension: 0.2, spanGaps: true },
+          { label: "Predicted traffic", data: predicted, borderWidth: 2, borderDash: [6, 4], tension: 0.2, spanGaps: true }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        scales: {
+          x: { title: { display: true, text: "Historical timestamp" } },
+          y: { beginAtZero: true, title: { display: true, text: "Traffic volume (vehicles)" } }
+        }
+      }
+    });
+  } else {
+    canvas.insertAdjacentHTML("afterend", "<p>Chart.js could not load. Check your internet connection or serve Chart.js locally.</p>");
+  }
+</script>
+</body>
+</html>
