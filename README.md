@@ -1,141 +1,100 @@
 # Traffic MQTT Monitor & Traffic Volume Prediction
 
-A small end-to-end demo that replays historical traffic observations over MQTT, predicts traffic volume with a Random Forest regression model, and displays actual-versus-predicted values in a Flask dashboard.
-
-> **Important:** This is a learning/demo project. The sender replays historical CSV rows; it is not a live traffic sensor or a production forecasting service.
+A small Python project that sends historical traffic data over MQTT, predicts traffic volume with a Random Forest model, and displays the actual and predicted values in a Flask dashboard.
 
 ## Features
 
-- Publishes CSV rows as JSON messages over MQTT.
-- Trains a scikit-learn `RandomForestRegressor` pipeline.
-- Saves the fitted preprocessing and model to `traffic_model.pkl`.
-- Subscribes to MQTT messages in a Flask receiver.
-- Displays the latest messages in a table and plots actual versus predicted traffic volume.
+- Publishes traffic records from a CSV file to an MQTT broker.
+- Trains a Random Forest regression model with scikit-learn.
+- Predicts traffic volume for incoming MQTT messages.
+- Displays recent records and an actual-versus-predicted graph in a web dashboard.
 
-## Architecture
+## How it works
 
 ```text
-TrafficVolumeData.csv
-        |
-        v
-    sender.py ---- JSON over MQTT ----> Mosquitto broker
-                                            |
-                                            v
-                                      receiver.py
-                                      |          |
-                                model predicts   Flask dashboard
-                                      |          |
-                                      +------> templates/index.html
+Traffic CSV → sender.py → MQTT broker → receiver.py → Flask dashboard
+                                         |
+                                         └── Random Forest model
 ```
 
-## Repository contents
+The sender replays historical rows from the dataset, one row at a time. The receiver uses the saved model to generate a prediction for each message, then the dashboard compares that prediction with the actual traffic volume in the same row.
+
+## Project structure
 
 ```text
 .
-├── sender.py                 # Replays CSV rows to MQTT
-├── receiver.py               # MQTT subscriber, prediction and Flask server
-├── ml_model.py               # Trains and saves the model pipeline
-├── test_prediction.py        # Tests the saved model on a dataset row
-├── features.py               # Shared feature preparation for training/inference
-├── requirements.txt
-├── .env.example              # Safe configuration template (no credentials)
+├── .env.example
 ├── .gitignore
+├── features.py
+├── ml_model.py
+├── receiver.py
+├── requirements.txt
+├── sender.py
+├── test_prediction.py
 ├── mosquitto/
-│   └── mosquitto.conf        # Local-demo broker configuration
+│   └── mosquitto.conf
 └── templates/
-    └── index.html            # Table and Chart.js graph
+    └── index.html
 ```
 
-The CSV dataset and generated `.pkl` model are intentionally **not included**. This avoids accidentally redistributing a dataset without checking its licence and avoids committing a generated binary that can be rebuilt.
+## Dataset
+
+This project uses the **[TrafficVolumeDataCSV dataset on Kaggle](https://www.kaggle.com/datasets/bobaaayoung/trafficvolumedatacsv/data)**.
+
+Download the CSV from Kaggle and place it in the project root as `TrafficVolumeData.csv`. The training and sender scripts expect that filename. Please refer to the Kaggle dataset page for the source and any terms that apply to the data.
 
 ## Requirements
 
 - Python 3.9 or newer
-- A running MQTT broker (Mosquitto is one option)
-- The traffic CSV dataset described below
-- Internet access in the browser if you want Chart.js to load from its CDN
+- An MQTT broker, such as Mosquitto
+- The dataset described above
 
-## 1. Get the dataset
-
-This project uses the traffic-volume dataset hosted on Kaggle:
-
-**Dataset:** [TrafficVolumeDataCSV on Kaggle](https://www.kaggle.com/datasets/bobaaayoung/trafficvolumedatacsv/data)
-
-1. Open the Kaggle dataset page and review its **License** and dataset description.
-2. Download the CSV file from Kaggle.
-3. Place it at the project root and rename it to:
-
-```text
-TrafficVolumeData.csv
-```
-
-The code expects these columns:
-
-- `date_time`
-- `is_holiday`
-- `air_pollution_index`
-- `humidity`
-- `wind_speed`
-- `wind_direction`
-- `visibility_in_miles`
-- `dew_point`
-- `temperature`
-- `rain_p_h`
-- `snow_p_h`
-- `clouds_all`
-- `weather_type`
-- `weather_description`
-- `traffic_volume`
-
-### Dataset licensing and attribution
-
-The fact that a dataset is publicly visible or downloadable on Kaggle does **not automatically mean that anyone may re-host or redistribute the file**. Kaggle supports multiple licence types, and the permissions depend on the licence attached to this specific dataset and any applicable source terms. See [Kaggle's documentation on dataset licences](https://www.kaggle.com/docs/datasets).
-
-For this repository, the safest default is to **link to the original Kaggle page and have users download the dataset themselves**, rather than committing a copy of the CSV. This keeps the repository smaller and avoids unintentionally redistributing data under terms that may require attribution, restrict commercial use, or impose other conditions.
-
-If the dataset's displayed licence explicitly permits redistribution, you can choose to include it later, following all attribution and licence requirements. If you do include it, retain the original attribution/licence information and do not imply that you created the dataset. The project code and the dataset may have different licences.
-
-## 2. Set up Python
-
-Create and activate a virtual environment:
+Install the Python dependencies:
 
 ```bash
 python -m venv .venv
 ```
 
-Windows PowerShell:
+Activate the environment:
 
+**Windows PowerShell**
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-Linux/macOS:
-
+**Linux/macOS**
 ```bash
 source .venv/bin/activate
 ```
 
-Install dependencies:
+Then install the packages:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-## 3. Configure MQTT
+## Configuration
 
-Copy `.env.example` to `.env` and adjust values for your environment. The Python scripts read environment variables directly; they do not automatically load `.env`. To use `.env`, either export the variables in your shell or install `python-dotenv` and load it in your own environment.
+Copy `.env.example` to `.env` and adjust the values for your environment. The scripts load settings from `.env`.
 
-For a local broker running on the same machine as the Python scripts, the defaults are:
+The main settings are:
 
-```text
-MQTT_HOST=127.0.0.1
-MQTT_PORT=1883
-MQTT_TOPIC=traffic/data
-```
+| Variable | Purpose | Default |
+|---|---|---|
+| `MQTT_HOST` | MQTT broker hostname or address | `127.0.0.1` |
+| `MQTT_PORT` | MQTT broker port | `1883` |
+| `MQTT_TOPIC` | Topic used for traffic messages | `traffic/data` |
+| `CSV_PATH` | Path to the CSV dataset | `TrafficVolumeData.csv` |
+| `PUBLISH_INTERVAL` | Seconds between published rows | `1` |
+| `REPLAY_LOOP` | Replay the CSV continuously when `true` | `false` |
+| `FLASK_HOST` | Address the dashboard listens on | `127.0.0.1` |
+| `FLASK_PORT` | Dashboard port | `5018` |
+| `MODEL_PATH` | Saved model path | `traffic_model.pkl` |
+| `MAX_MESSAGES` | Number of recent messages shown | `10` |
 
-### Optional: run a local Mosquitto broker with Docker
+### Start Mosquitto with Docker (optional)
 
-From the project root:
+From the project root, run:
 
 ```bash
 docker run --rm --name traffic-mosquitto \
@@ -144,80 +103,64 @@ docker run --rm --name traffic-mosquitto \
   eclipse-mosquitto:2
 ```
 
-The included broker configuration allows anonymous access for a **local-only demo**. The port is bound to `127.0.0.1`, not all network interfaces. Do not expose this configuration to an untrusted network or the public internet.
+This example is intended for a local demo. If your broker runs elsewhere, set `MQTT_HOST` and `MQTT_PORT` to the address and port reachable from the Python scripts.
 
-If the broker runs in a different container, `127.0.0.1` usually refers to the Python container itself, not the broker. Set `MQTT_HOST` to the broker's reachable hostname on the shared Docker network, or to the host address reachable from that container. Do not copy private LAN IP addresses into source code.
+## Train the model
 
-## 4. Train the model
-
-With the dataset in the project root:
+After placing the dataset in the project root, run:
 
 ```bash
 python ml_model.py
 ```
 
-This trains a Random Forest regression pipeline and writes `traffic_model.pkl` to the project root. The pipeline includes missing-value imputation and one-hot encoding for categorical fields.
+The script trains a Random Forest regression pipeline, evaluates it on a held-out random split, then trains the pipeline on the full dataset and saves it as `traffic_model.pkl`.
 
-The script prints a holdout Mean Absolute Error (MAE) and R² score. The original development run reported **MAE 239.90** and **R² 0.9562** on a random train/test split. Results may differ by dataset version and library versions. A random split is not a rigorous test of future-time forecasting because nearby observations can be correlated; use a chronological split for a more realistic forecasting evaluation.
+In the original development run, the holdout results were:
 
-## 5. Run the receiver/dashboard
+- Mean Absolute Error (MAE): `239.90`
+- R² score: `0.9562`
 
-Start the Flask receiver in one terminal:
+Your results may vary depending on the dataset and library versions. Because the data is time-based, a random split may give an optimistic view of performance on future dates; a chronological evaluation would be a stronger test for forecasting.
+
+## Run the dashboard
+
+Start the receiver:
 
 ```bash
 python receiver.py
 ```
 
-By default, it listens on `http://127.0.0.1:5018`. Open that URL in your browser. If you are running it in Docker, publish the container port you configured; the host port may be different.
+By default, the dashboard is available at [http://127.0.0.1:5018](http://127.0.0.1:5018).
 
-## 6. Start replaying the dataset
-
-In another terminal, run:
+In another terminal, start the CSV sender:
 
 ```bash
 python sender.py
 ```
 
-The sender publishes one CSV row per second to `traffic/data` by default. The dashboard refreshes periodically and displays the most recent records.
+As the messages arrive, the dashboard updates its table and graph. Chart.js is loaded from a CDN, so the browser needs internet access to display the graph.
 
-You can change the broker address, port, topic, CSV path, publish interval, Flask host, and Flask port with environment variables. See `.env.example`.
+## Test a prediction
 
-## 7. Test the saved model separately
+To compare the saved model's prediction with the actual value from the first dataset row, run:
 
 ```bash
 python test_prediction.py
 ```
 
-This loads `traffic_model.pkl`, prepares one row using the same feature logic as training, and prints the actual and predicted traffic volume.
+## Model overview
 
-## How the model works
+The target is `traffic_volume`. The model uses weather and environmental fields, holiday and weather categories, and time features derived from `date_time`:
 
-- **Target (`y`):** `traffic_volume`
-- **Inputs (`X`):** weather/environment fields and holiday/weather categories, plus time features derived from `date_time` (`hour`, `day_of_week`, `month`, and `day`).
-- **Preprocessing:** numeric missing values are filled with the training-set median; missing categorical values are filled with `Unknown`; categorical values are one-hot encoded.
-- **Estimator:** `RandomForestRegressor` with 200 trees in the default training script.
-- **Inference:** each incoming message is transformed by the same fitted pipeline and gets a `predicted_traffic` value.
+- Hour
+- Day of the week
+- Month
+- Day of the month
 
-The dashboard compares the prediction with the actual `traffic_volume` contained in each historical message. Because the actual value is sent along with the row, this graph is a comparison against known historical observations—not a prediction of an unknown future value.
+Missing numeric values are imputed with the median, and categorical values are imputed and one-hot encoded. The Random Forest model uses 200 trees by default.
 
-## Security and public-repository checklist
-
-Before pushing to GitHub:
-
-- Keep `.env`, local logs, virtual environments, and local configuration out of Git.
-- Do not commit API keys, passwords, tokens, private certificates, private IP addresses, usernames, machine paths, or internal hostnames.
-- Do not commit your generated model or the CSV unless you have a reason to publish them and the dataset licence permits it.
-- Review Git history as well as the current files. Removing a secret from the latest commit does not remove it from earlier commits.
-- The bundled Mosquitto config is for a local demonstration only; do not expose anonymous MQTT access publicly.
-- If a credential was ever committed, revoke/rotate it rather than merely deleting it from the file.
-
-## Limitations and possible improvements
-
-- Historical CSV replay is not live sensor data.
-- The random train/test split can give an optimistic score for time-dependent data; evaluate with a chronological split before making forecasting claims.
-- The model currently predicts the traffic volume in a row from that row's weather/time features. It does not forecast future traffic from a sequence of past traffic volumes.
-- Chart.js is loaded from a CDN; an internet connection is needed for the graph unless the library is served locally.
+This dashboard compares predictions with known historical values carried in the incoming CSV rows. It is a demonstration of an MQTT-to-ML pipeline, not a live traffic sensor or a future-traffic forecasting service.
 
 ## License
 
-No project licence has been selected. Add a licence file before inviting reuse. Do not assume the dataset has the same licence as your code.
+This repository's code is released under the **MIT License**. See [`LICENSE`](LICENSE). The Kaggle dataset is a separate work; refer to its source page for applicable terms.
